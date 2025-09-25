@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NOVA vs. Lead-Acid TCO Calculator</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f9f9f9; color: #333; }
+    h1, h2 { text-align: center; }
+    .container { max-width: 960px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }
+    .control-group { display: flex; flex-direction: column; }
+    .control-group label { margin-bottom: 6px; font-size: 0.95rem; }
+    .control-group input[type="range"], .control-group input[type="number"] { width: 100%; }
+    .control-group input[type="number"] { padding: 6px; font-size: 1rem; border: 1px solid #ccc; border-radius: 4px; }
+    .control-group .readonly-value { margin-top: 4px; font-size: 1rem; font-weight: bold; color: #00509e; }
+    .section-heading { grid-column: span 2; margin-top: 20px; font-size: 1.1rem; font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+    .chart-container { position: relative; height: 400px; width: 100%; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px; }
+    .summary div { background: #eef; padding: 10px 15px; border-radius: 6px; text-align: center; }
+    .summary div h3 { margin: 0 0 8px; font-size: 1rem; color: #00509e; }
+    .summary div p { margin: 0; font-size: 1.2rem; font-weight: bold; color: #333; }
+    @media (max-width: 700px) {
+      .controls { grid-template-columns: 1fr; }
+      .section-heading { grid-column: span 1; }
+      .summary { grid-template-columns: 1fr; }
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>NOVA vs. Lead-Acid TCO Calculator</h1>
+    <h2>Toggle Between Component‐Breakdown or Direct NOVA Price</h2>
+
+    <div class="controls">
+      <!-- ========================== -->
+      <!-- FLEET & TIME PARAMETERS   -->
+      <!-- ========================== -->
+      <div class="section-heading">Fleet &amp; Time Parameters</div>
+
+      <div class="control-group">
+        <label for="numVehicles">Number of Vehicles</label>
+        <input id="numVehicles" type="number" min="1" max="1000" step="1" value="10" />
+      </div>
+      <div class="control-group">
+        <label for="batteriesPerVehicle">Batteries per Vehicle</label>
+        <input id="batteriesPerVehicle" type="number" min="1" max="3" step="1" value="1" />
+      </div>
+
+      <div class="control-group">
+        <label for="horizon">Analysis Horizon (Years)</label>
+        <input id="horizon" type="range" min="1" max="10" step="1" value="5" />
+        <p style="margin-top:5px; font-size:0.9rem;">
+          <span id="horizonValue">5</span> years
+        </p>
+      </div>
+
+      <!-- ========================== -->
+      <!-- LEAD-ACID BATTERY INPUTS   -->
+      <!-- ========================== -->
+      <div class="section-heading">Lead‐Acid Battery</div>
+
+      <div class="control-group">
+        <label for="leadCost">Lead‐Acid Cost per Unit (₱)</label>
+        <input id="leadCost" type="number" min="1000" max="20000" step="100" value="5350" />
+      </div>
+
+      <div class="control-group">
+        <label for="leadLife">Lead‐Acid Lifespan (Years)</label>
+        <input id="leadLife" type="range" min="1" max="3" step="0.1" value="1.0" />
+        <p style="margin-top:5px; font-size:0.9rem;">
+          <span id="leadLifeValue">1.0</span> years
+        </p>
+      </div>
+
+      <div class="control-group">
+        <label for="leadMaint">Lead‐Acid Maintenance per Year (₱)</label>
+        <input id="leadMaint" type="number" min="0" max="5000" step="50" value="0" />
+      </div>
+
+      <!-- ========================== -->
+      <!-- NOVA TOGGLE: COMPONENTS vs. DIRECT PRICE -->
+      <!-- ========================== -->
+      <div class="section-heading">NOVA – Input Mode</div>
+      <div class="control-group">
+        <label>
+          <input type="checkbox" id="toggleDirectNova" checked />
+          Use Direct NOVA Selling Price (₱, incl. VAT)
+        </label>
+      </div>
+      <div class="control-group" id="directNovaGroup" style="margin-top: -10px;">
+        <label for="novaDirectPrice">Direct NOVA Price per Unit (₱, incl. VAT)</label>
+        <input id="novaDirectPrice" type="number" min="0" step="0.01" value="12050" />
+      </div>
+
+      <!-- ========================== -->
+      <!-- NOVA COMPONENT BREAKDOWN   -->
+      <!-- ========================== -->
+      <div class="section-heading" id="novaComponentsHeading">NOVA – Component Breakdown</div>
+
+      <div class="control-group" id="novaComponentCells">
+        <label for="novaCells">Cells (₱)</label>
+        <input id="novaCells" type="number" min="0" step="0.01" value="5179.49" />
+      </div>
+
+      <div class="control-group" id="novaComponentBms">
+        <label for="novaBms">BMS Components (₱)</label>
+        <input id="novaBms" type="number" min="0" step="0.01" value="900.00" />
+      </div>
+
+      <div class="control-group" id="novaComponentPcb">
+        <label for="novaPcb">PCB Assembly (₱)</label>
+        <input id="novaPcb" type="number" min="0" step="0.01" value="39.89" />
+      </div>
+
+      <div class="control-group" id="novaComponentEncl">
+        <label for="novaEncl">Enclosure (₱)</label>
+        <input id="novaEncl" type="number" min="0" step="0.01" value="450.84" />
+      </div>
+
+      <div class="control-group" id="novaComponentProdPct">
+        <label for="novaProdPct">Production Cost (%)</label>
+        <input id="novaProdPct" type="range" min="0" max="20" step="0.1" value="5" />
+        <p style="margin-top:5px; font-size:0.9rem;">
+          <span id="novaProdPctValue">5.0</span> %
+        </p>
+      </div>
+
+      <div class="control-group" id="novaComponentLogPct">
+        <label for="novaLogPct">Logistics Cost (%)</label>
+        <input id="novaLogPct" type="range" min="0" max="20" step="0.1" value="5" />
+        <p style="margin-top:5px; font-size:0.9rem;">
+          <span id="novaLogPctValue">5.0</span> %
+        </p>
+      </div>
+
+      <div class="control-group" id="novaComponentMarginPct">
+        <label for="novaMarginPct">Margin (%)</label>
+        <input id="novaMarginPct" type="range" min="0" max="100" step="1" value="49" />
+        <p style="margin-top:5px; font-size:0.9rem;">
+          <span id="novaMarginPctValue">49</span> %
+        </p>
+      </div>
+
+      <div class="section-heading">NOVA Lifespan</div>
+      <div class="control-group" id="novaComponentLife">
+        <label for="novaLife">NOVA Lifespan (Years)</label>
+        <input id="novaLife" type="range" min="1" max="5" step="0.1" value="3.0" />
+        <p style="margin-top:5px; font-size:0.9rem;">
+          <span id="novaLifeValue">3.0</span> years
+        </p>
+      </div>
+
+      <div class="control-group" id="novaComponentSellPrice">
+        <label for="novaSellPrice">Computed NOVA Price per Unit (₱, incl. VAT)</label>
+        <p id="novaSellPrice" class="readonly-value">12,050.00</p>
+      </div>
+    </div> <!-- end .controls -->
+
+    <div class="chart-container">
+      <canvas id="tcoChart"></canvas>
+    </div>
+    <div class="summary">
+      <div>
+        <h3>Total Lead-Acid Cost/Vehicle</h3>
+        <p id="taLead"></p>
+      </div>
+      <div>
+        <h3>Total NOVA Cost/Vehicle</h3>
+        <p id="taNOVA"></p>
+      </div>
+      <div>
+        <h3>Cumulative Savings/Vehicle</h3>
+        <p id="taSave"></p>
+      </div>
+      <div>
+        <h3>Total Fleet Savings</h3>
+        <p id="taFleetSave"></p>
+      </div>
+    </div>
+  </div> <!-- end .container -->
+
+  <script>
+    // ——————————————————————————————————————————————————————————————————————
+    // Grab DOM elements
+    // ——————————————————————————————————————————————————————————————————————
+    const numVehiclesInput = document.getElementById("numVehicles");
+    const batteriesPerVehicleInput = document.getElementById("batteriesPerVehicle");
+    const horizonInput = document.getElementById("horizon");
+    const horizonValue = document.getElementById("horizonValue");
+
+    // Lead-Acid
+    const leadCostInput = document.getElementById("leadCost");
+    const leadLifeInput = document.getElementById("leadLife");
+    const leadLifeValue = document.getElementById("leadLifeValue");
+    const leadMaintInput = document.getElementById("leadMaint");
+
+    // Toggle between component breakdown or direct NOVA price
+    const toggleDirectNova = document.getElementById("toggleDirectNova");
+    const directNovaGroup = document.getElementById("directNovaGroup");
+    const novaDirectPriceInput = document.getElementById("novaDirectPrice");
+
+    // NOVA component fields
+    const novaComponentsHeading = document.getElementById("novaComponentsHeading");
+    const novaCellsInput = document.getElementById("novaCells");
+    const novaBmsInput = document.getElementById("novaBms");
+    const novaPcbInput = document.getElementById("novaPcb");
+    const novaEnclInput = document.getElementById("novaEncl");
+    const novaProdPctInput = document.getElementById("novaProdPct");
+    const novaProdPctValue = document.getElementById("novaProdPctValue");
+    const novaLogPctInput = document.getElementById("novaLogPct");
+    const novaLogPctValue = document.getElementById("novaLogPctValue");
+    const novaMarginPctInput = document.getElementById("novaMarginPct");
+    const novaMarginPctValue = document.getElementById("novaMarginPctValue");
+    const novaLifeInput = document.getElementById("novaLife");
+    const novaLifeValue = document.getElementById("novaLifeValue");
+    const novaSellPriceDisplay = document.getElementById("novaSellPrice");
+
+    // These component fields get hidden when “direct” mode is on (lifespan stays visible)
+    const novaComponentFields = [
+      novaComponentsHeading,
+      document.getElementById("novaComponentCells"),
+      document.getElementById("novaComponentBms"),
+      document.getElementById("novaComponentPcb"),
+      document.getElementById("novaComponentEncl"),
+      document.getElementById("novaComponentProdPct"),
+      document.getElementById("novaComponentLogPct"),
+      document.getElementById("novaComponentMarginPct"),
+      document.getElementById("novaComponentSellPrice"),
+      // NOVA lifespan is intentionally omitted so it remains visible
+    ];
+
+    // Summary elements
+    const taLeadEl = document.getElementById("taLead");
+    const taNovaEl = document.getElementById("taNOVA");
+    const taSaveEl = document.getElementById("taSave");
+    const taFleetSaveEl = document.getElementById("taFleetSave");
+
+    // Chart context
+    const ctx = document.getElementById("tcoChart").getContext("2d");
+    let tcoChart = null;
+
+    // ===============================
+    // UTILITY: Build Nominal Cashflow
+    // ===============================
+    function buildNominalCashflow(upfront, lifespan, maint, horizon) {
+      const cashflows = [];
+      let replacements = 1;
+      for (let year = 0; year <= horizon; year++) {
+        if (year === 0) {
+          cashflows.push(upfront);
+        } else {
+          let cf = maint;
+          const effectiveAge = year / lifespan;
+          if (effectiveAge > replacements) {
+            replacements++;
+            cf += upfront;
+          }
+          cashflows.push(cf);
+        }
+      }
+      return cashflows;
+    }
+
+    // Convert cashflow array → cumulative series
+    function computeNominalSeries(cashflows) {
+      const series = [];
+      let cum = 0;
+      for (let i = 0; i < cashflows.length; i++) {
+        cum += cashflows[i];
+        series.push(cum);
+      }
+      return series;
+    }
+
+    // If using COMPONENT MODE, compute NOVA price (incl. 12% VAT)
+    function computeNovaPriceFromComponents() {
+      const cells = parseFloat(novaCellsInput.value) || 0;
+      const bms = parseFloat(novaBmsInput.value) || 0;
+      const pcb = parseFloat(novaPcbInput.value) || 0;
+      const encl = parseFloat(novaEnclInput.value) || 0;
+      const prodPct = parseFloat(novaProdPctInput.value) / 100;
+      const logPct = parseFloat(novaLogPctInput.value) / 100;
+      const marginPct = parseFloat(novaMarginPctInput.value) / 100;
+
+      const materialSubtotal = cells + bms + pcb + encl;
+      const prodCost = materialSubtotal * prodPct;
+      const logCost = materialSubtotal * logPct;
+      const finalCostNoMargin = materialSubtotal + prodCost + logCost;
+      const sellingNoVAT = finalCostNoMargin/(1-marginPct);
+      return sellingNoVAT * 1.12;
+    }
+
+    // Get final NOVA price (incl. VAT), either direct or computed
+    function getNovaPriceInclVAT() {
+      if (toggleDirectNova.checked) {
+        return parseFloat(novaDirectPriceInput.value) || 0;
+      } else {
+        return computeNovaPriceFromComponents();
+      }
+    }
+
+    // MAIN UPDATER: redraw chart & summaries
+    function updateAll() {
+      const numVehicles = parseInt(numVehiclesInput.value, 10) || 0;
+      const batteriesPerVehicle = Math.max(1, Math.min(3, parseInt(batteriesPerVehicleInput.value, 10) || 1));
+      const horizon = parseInt(horizonInput.value, 10) || 0;
+      horizonValue.textContent = horizon;
+
+      const leadCost = parseFloat(leadCostInput.value) || 0;
+      const leadLife = parseFloat(leadLifeInput.value) || 0;
+      leadLifeValue.textContent = leadLife.toFixed(1);
+      const leadMaint = parseFloat(leadMaintInput.value) || 0;
+
+      const novaPriceInclVAT = getNovaPriceInclVAT();
+      novaSellPriceDisplay.textContent = novaPriceInclVAT.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+      const novaLife = parseFloat(novaLifeInput.value) || 0;
+      novaLifeValue.textContent = novaLife.toFixed(1);
+
+      novaProdPctValue.textContent = parseFloat(novaProdPctInput.value).toFixed(1);
+      novaLogPctValue.textContent = parseFloat(novaLogPctInput.value).toFixed(1);
+      novaMarginPctValue.textContent = parseInt(novaMarginPctInput.value, 10);
+
+      // All per-vehicle costs are multiplied by batteriesPerVehicle
+      const leadCashflow = buildNominalCashflow(
+        leadCost * batteriesPerVehicle,
+        leadLife,
+        leadMaint * batteriesPerVehicle,
+        horizon
+      );
+      const novaCashflow = buildNominalCashflow(
+        novaPriceInclVAT * batteriesPerVehicle,
+        novaLife,
+        0,
+        horizon
+      );
+
+      const leadNominalSeries = computeNominalSeries(leadCashflow);
+      const novaNominalSeries = computeNominalSeries(novaCashflow);
+
+      const labels = Array.from({ length: horizon + 1 }, (_, i) => String(i));
+      if (tcoChart) tcoChart.destroy();
+      tcoChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Lead-Acid TCO (Nominal)",
+              data: leadNominalSeries,
+              borderColor: "#d9534f",
+              backgroundColor: "rgba(217, 83, 79, 0.2)",
+              tension: 0.3,
+              fill: true,
+            },
+            {
+              label: "NOVA TCO (Nominal)",
+              data: novaNominalSeries,
+              borderColor: "#0275d8",
+              backgroundColor: "rgba(2, 117, 216, 0.2)",
+              tension: 0.3,
+              fill: true,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "top" },
+            tooltip: {
+              mode: "index",
+              intersect: false,
+              callbacks: {
+                label: (context) => `₱ ${context.parsed.y.toLocaleString()}`,
+              },
+            },
+          },
+          scales: {
+            x: { title: { display: true, text: "Year" }, },
+            y: {
+              title: { display: true, text: "Cumulative Cost (₱)" },
+              ticks: {
+                callback: (val) => `₱${val.toLocaleString()}`,
+              },
+            },
+          },
+        },
+      });
+
+      const leadFinal = leadNominalSeries[horizon] || 0;
+      const novaFinal = novaNominalSeries[horizon] || 0;
+      const savingsFinal = leadFinal - novaFinal;
+      const totalFleetSavings = savingsFinal * (numVehicles || 0);
+
+      taLeadEl.textContent = `₱ ${leadFinal.toLocaleString(undefined, { maximumFractionDigits: 2, })}`;
+      taNovaEl.textContent = `₱ ${novaFinal.toLocaleString(undefined, { maximumFractionDigits: 2, })}`;
+      taSaveEl.textContent = `₱ ${savingsFinal.toLocaleString(undefined, { maximumFractionDigits: 2, })}`;
+      taFleetSaveEl.textContent = `₱ ${totalFleetSavings.toLocaleString(undefined, { maximumFractionDigits: 2, })}`;
+    }
+
+    function toggleNovaMode() {
+      const isDirect = toggleDirectNova.checked;
+      directNovaGroup.classList.toggle("hidden", !isDirect);
+      novaComponentFields.forEach((el) => el.classList.toggle("hidden", isDirect));
+      updateAll();
+    }
+
+    [
+      numVehiclesInput,
+      batteriesPerVehicleInput,
+      horizonInput,
+      leadCostInput,
+      leadLifeInput,
+      leadMaintInput,
+      novaDirectPriceInput,
+      novaCellsInput,
+      novaBmsInput,
+      novaPcbInput,
+      novaEnclInput,
+      novaProdPctInput,
+      novaLogPctInput,
+      novaMarginPctInput,
+      novaLifeInput,
+    ].forEach((el) => el.addEventListener("input", updateAll));
+
+    toggleDirectNova.addEventListener("change", toggleNovaMode);
+
+    // On page load: set Direct NOVA price as default, set initial visibility, draw
+    document.addEventListener("DOMContentLoaded", () => {
+      toggleDirectNova.checked = true;
+      toggleNovaMode();
+      updateAll();
+    });
+  </script>
+</body>
+</html>
